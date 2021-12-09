@@ -18,6 +18,6 @@ After installing the requirements, clone the repo to your local machine.
 ## Downloading the compiled FW to the Teensy
 After successfull compilation, you can download the FW with `pio run --target upload` to the Teensy.
 
-##Updating the libraries
+## Updating the libraries
 While the PCAP04-arduino and arduino-MPU-driver is still in development you should always check if you are using the latest version.
 You can simply update the driver libraries with `pio lib update`.
