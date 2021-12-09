@@ -15,8 +15,14 @@ After installing the requirements, clone the repo to your local machine.
   - Change directory to the project folder.
   - Run project targets over environments declared in **platformio.ini** (Project Configuration File).  
   `pio run`
-  
+
   Note: All dependencies of the project declared in the **platform.ini** will be installed by PlatformIO automatically.
+Some basic Git commands are:
+```
+git status
+git add
+git commit
+```
 
   
 ## Downloading the compiled FW to the Teensy
