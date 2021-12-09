@@ -1,12 +1,12 @@
 # metsensor-pio
 
-##Requirements
+## Requirements
 
 1. Download and install MS Visual Studio Code
 2. Install **C/C++ for Visual Studio Code** and **PlatformIO**
 3. Install PlatformIO extension in Visual Studio Code
 
-##Compiling the project
+## Compiling the project
 After installing the requirements, clone the repo to your local machine. 
 - If you are using a physical machine, you can use **PIO Home** user interface tool to import and configure the project.
 - If you are running a virtual machine, **PIO Home** won't work but there is also a powerfull CLI tool which has the same functionality with PIO Home.
