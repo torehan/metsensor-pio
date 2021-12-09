@@ -8,6 +8,7 @@
 #define LED_PIN 13 //onboard LED
 
 #define MPU_CS_PIN 10
+#define MPU_INT_PIN 8
 #define PCAP1_CS_PIN 5
 #define PCAP2_CS_PIN 6
 
