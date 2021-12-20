@@ -4,6 +4,8 @@
 // device drivers
 #include "pcap04.h"
 #include "Adafruit_BMP3XX.h"
+#include "MPU.hpp"
+#include <ArduinoJson.h>
 
 #define LED_PIN 13 //onboard LED
 
@@ -33,9 +35,16 @@ pcap_config_t metsensor_pcap_config;
 pcap_results_t pcap_results;
 pcap_status_t pcap_status;
 
-PCAP04 pcap1(PCAP04_V1, PCAP_SPI_MODE, HUMIDITY, PCAP1_CS_PIN, metsensor_pcap_config_handler, metsensor_pcap_config);
+PCAP04 pcap1(PCAP04_V1, PCAP_SPI_MODE, STANDARD, PCAP1_CS_PIN, metsensor_pcap_config_handler, metsensor_pcap_config);
 //PCAP04 pcap2(PCAP04_V0, PCAP_SPI_MODE, HUMIDITY, PCAP2_CS_PIN);
 
+MPU_t mpu(MPU_CS_PIN);
+
 Adafruit_BMP3XX bmp390;
+
+DynamicJsonDocument results_json(1024);
+
+unsigned long current_micros = 0;
+
 
 #endif
