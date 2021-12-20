@@ -17,7 +17,6 @@
 
 #include "pcap04.h"
 #include "Adafruit_BMP3XX.h"
-
 #include "MPU.hpp"
 
 #include "config.h"
@@ -73,6 +72,8 @@ static volatile uint32_t epoc_time_nanos;
 
 void init_hw_peripherals(){
 
+  delay(1000);
+
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
@@ -85,23 +86,28 @@ void init_hw_peripherals(){
   pinMode(MPU_CS_PIN, OUTPUT);        // MPU6500 serial select pin
   digitalWrite(MPU_CS_PIN, HIGH);     // MPU6500 serial de-select     
   
-  delay(3000);
+  pinMode(HEATER1_SEL_PIN, OUTPUT);       
+  digitalWrite(HEATER1_SEL_PIN, LOW);       
 
+  pinMode(HEATER2_SEL_PIN, OUTPUT);       
+  digitalWrite(HEATER2_SEL_PIN, LOW);     
+
+  SPI.begin();
 
   if (!bmp390.begin_I2C(BMP390_I2C_ADDR)) {
     Serial.println("Could not find a valid BMP390 sensor, check wiring!");
     coms_error(LED_PIN);
   }
-
-  SPI.begin();
-  delay(1000);
-
-  // Set up oversampling and filter initialization
   bmp390.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
   bmp390.setPressureOversampling(BMP3_OVERSAMPLING_4X);
   bmp390.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
-  bmp390.setOutputDataRate(BMP3_ODR_50_HZ);
+  bmp390.setOutputDataRate(BMP3_ODR_50_HZ); 
   
+  // mpu.testConnection();
+  // mpu.initialize();
+
+  delay(1000);
+
   };
 
 void publish_diagnostics() {
@@ -247,8 +253,6 @@ void init_diagnostics() {
 void setup() {
   //set_microros_transports();
   
-  delay(5000);
-
   init_hw_peripherals();
   
   pcap1.init_nvram();
@@ -258,30 +262,37 @@ void setup() {
 
   metsensor_pcap_config = pcap1.get_config();
 
-  metsensor_pcap_config.C_TRIG_SEL = 6;
-  // metsensor_pcap_config.C_DIFFERENTIAL = 0;
-  // metsensor_pcap_config.C_COMP_EXT = 0;
-  // metsensor_pcap_config.C_FLOATING = 1;
-  metsensor_pcap_config.C_REF_INT = 1;
-  metsensor_pcap_config.C_REF_SEL = 31;
+  metsensor_pcap_config.C_TRIG_SEL = 0x06;
+  metsensor_pcap_config.C_DIFFERENTIAL = 0x00;
+  metsensor_pcap_config.C_COMP_EXT = 0x01;
+  metsensor_pcap_config.C_FLOATING = 0x01;
+  metsensor_pcap_config.C_REF_INT = 0x00;
 
-  metsensor_pcap_config.C_FAKE = 10;
-  metsensor_pcap_config.C_AVRG = 100;
+  metsensor_pcap_config.C_COMP_INT = 0b1;
+  metsensor_pcap_config.C_COMP_EXT = 0b1;
+
+  metsensor_pcap_config.C_FAKE = 0x00;
+  metsensor_pcap_config.C_AVRG = 0x40;
   
-  metsensor_pcap_config.PRECHARGE_TIME = 4;
-  metsensor_pcap_config.FULLCHARGE_TIME =  4;
-  metsensor_pcap_config.DISCHARGE_TIME = 4;
+  metsensor_pcap_config.CONV_TIME = 0x00;
+  metsensor_pcap_config.PRECHARGE_TIME = 0x00;
+  metsensor_pcap_config.FULLCHARGE_TIME =  0x02;  
+  metsensor_pcap_config.DISCHARGE_TIME = 0x00;
 
-  metsensor_pcap_config.RDCHG_INT_SEL0 = 3;
+  metsensor_pcap_config.RDCHG_INT_SEL0 = 0x03;
+  metsensor_pcap_config.RDCHG_INT_SEL1 = 0x03;
 
-  metsensor_pcap_config.RCHG_SEL = 0;
-  metsensor_pcap_config.C_PORT_EN = 0x03;
+  metsensor_pcap_config.RCHG_SEL = 0x00;
 
-  metsensor_pcap_config.R_TRIG_SEL = 5;
-  metsensor_pcap_config.R_TRIG_PREDIV = 1;
-  metsensor_pcap_config.R_AVRG = 3;
-  metsensor_pcap_config.R_FAKE = 1;
+  metsensor_pcap_config.C_PORT_EN = 0x3F;
 
+  metsensor_pcap_config.R_TRIG_SEL = 0x05;
+  metsensor_pcap_config.R_TRIG_PREDIV = 0x01;
+  metsensor_pcap_config.R_AVRG = 0x02;
+  metsensor_pcap_config.R_FAKE = 0x00;
+
+  metsensor_pcap_config.R_PORT_EN = 0b10;
+  
   pcap1.update_config(metsensor_pcap_config);
   Serial.println(); Serial.println("updated config"); Serial.println();
   pcap1.print_config();
@@ -434,152 +445,103 @@ void setup() {
 }  // end setup
 
 void loop() {
-  static int iloop = 0;
-  static bool started = false;
-
+  
   pcap1.send_command(CDC_START);
   delay(1);
   pcap_status = pcap1.get_status(false);
   while(pcap_status.CDC_ACTIVE || pcap_status.COMB_ERR){
+    if (pcap_status.COMB_ERR){
+      Serial.print("-COMB_ERR");
+      if (pcap_status.ERR_OVERFL){
+        Serial.print("--ERR_OVERFL");
+      }
+      if (pcap_status.MUP_ERR){
+        Serial.print("--MUP_ERR");
+      }
+      if (pcap_status.RDC_ERR){
+        Serial.print("--RDC_ERR");
+      }
+      if(pcap_status.C_PORT_ERR0){
+        Serial.print("--C_PORT_ERR0");
+      }
+      if(pcap_status.C_PORT_ERR1){
+        Serial.print("--C_PORT_ERR1");
+      }
+      if(pcap_status.C_PORT_ERR2){
+        Serial.print("--C_PORT_ERR2");
+      }
+      if(pcap_status.C_PORT_ERR3){
+        Serial.print("--C_PORT_ERR3");
+      }
+      if(pcap_status.C_PORT_ERR4){
+        Serial.print("--C_PORT_ERR4");
+      }
+      if(pcap_status.C_PORT_ERR5){
+        Serial.print("--C_PORT_ERR5");
+      }
+      if(pcap_status.C_PORT_ERR_INT){
+        Serial.print("--C_PORT_ERR_INT");
+      }                          
+
+    }
+    if(pcap_status.POR_FLAG_CONFIG){
+      Serial.print("POR_FLAG_CONFIG");      
+    }
+    if (pcap_status.POR_CDC_DSP_COLL){
+      Serial.print("POR_CDC_DSP_COLL");      
+    }
+    if (pcap_status.POR_FLAG_WDOG){
+      Serial.print("POR_FLAG_WDOG");      
+    }
+    if (pcap_status.POR_FLAG_WDOG){
+      Serial.print("POR_FLAG_WDOG");      
+    }        
     pcap_status = pcap1.get_status(false);
-    Serial.println(" * ");
-    delay(10);
+    // Serial.print(" * ");
+    delay(100);
   }
-  
-  pcap_status = pcap1.get_status(true); Serial.print(" | ");
+
+  pcap_status = pcap1.get_status(false); 
   pcap_results = pcap1.get_results();
-  Serial.print(pcap_results.C0_over_CREF,7);Serial.print(" - ");
-  Serial.print(pcap_results.C1_over_CREF,7);Serial.print(" - ");
-  Serial.print(pcap_results.C2_over_CREF,7);Serial.print(" - ");
-  Serial.print(pcap_results.C3_over_CREF,7);Serial.print(" - ");
-  Serial.print(pcap_results.C4_over_CREF,7);Serial.print(" - ");
-  Serial.print(pcap_results.C4_over_CREF,7);Serial.print(" - ");
-  Serial.print(pcap_results.PT1_over_PTREF,7);Serial.print(" - ");
-  Serial.println(pcap_results.PTInternal_over_PTREF,7);
-  delay(500);
+  current_micros = micros();
 
-  // Serial.print(iloop);Serial.print(" - ");
-  //pcap_status = pcap1.get_status(); 
+  results_json["results0_f"] = pcap_results.C0_over_CREF;
+  results_json["results1_f"] = pcap_results.C1_over_CREF;
+  results_json["results2_f"] = pcap_results.C2_over_CREF;
+  results_json["results3_f"] = pcap_results.C3_over_CREF;
+  results_json["results4_f"] = pcap_results.C4_over_CREF;
+  results_json["results5_f"] = pcap_results.C5_over_CREF;
+  results_json["results6_f"] = pcap_results.PT1_over_PTREF;        
+  results_json["results7_f"] = pcap_results.PTInternal_over_PTREF;
+  results_json["time"] = current_micros;
+  results_json["RUNBIT"] = pcap_status.RUNBIT;
+  results_json["CDC_ACTIVE"] = pcap_status.CDC_ACTIVE;
+  results_json["RDC_READY"] = pcap_status.RDC_READY;
+  results_json["AUTOBOOT_BUSY"] = pcap_status.AUTOBOOT_BUSY;
+  results_json["POR_CDC_DSP_COLL"] = pcap_status.POR_CDC_DSP_COLL;
+  results_json["POR_FLAG_WDOG"] = pcap_status.POR_FLAG_WDOG;
+  results_json["COMB_ERR"] = pcap_status.COMB_ERR;
+  results_json["ERR_OVERFL"] = pcap_status.ERR_OVERFL;
+  results_json["MUP_ERR"] = pcap_status.MUP_ERR;
+  results_json["RDC_ERR"] = pcap_status.RDC_ERR;
+  results_json["C_PORT_ERR0"] = pcap_status.C_PORT_ERR0;
+  results_json["C_PORT_ERR1"] = pcap_status.C_PORT_ERR1;
+  results_json["C_PORT_ERR2"] = pcap_status.C_PORT_ERR2;
+  results_json["C_PORT_ERR3"] = pcap_status.C_PORT_ERR3;
+  results_json["C_PORT_ERR4"] = pcap_status.C_PORT_ERR4;
+  results_json["C_PORT_ERR5"] = pcap_status.C_PORT_ERR5;
+  results_json["C_PORT_ERR_INT"] = pcap_status.C_PORT_ERR_INT;
 
-  // if (iloop < 101){
+  serializeJson(results_json, Serial);
 
-  //   //pcap_status = pcap1.get_status();
-
-
-  //   if(iloop%5 == 0){
-
-  //       pcap_results = pcap1.  pcap_status = pcap1.get_status(); 
-
-  //       pcap_status = pcap1.get_status(); Serial.print(" | ");
-
-  //       Serial.print(pcap_results.C0_over_CREF,7);Serial.print(" - ");
-  //       Serial.print(pcap_results.C1_over_CREF,7);Serial.print(" - ");
-  //       Serial.print(pcap_results.C2_over_CREF,7);Serial.print(" - ");
-  //       Serial.print(pcap_results.C3_over_CREF,7);Serial.print(" - ");
-  //       Serial.print(pcap_results.C4_over_CREF,7);Serial.print(" - ");
-  //       Serial.print(pcap_results.C4_over_CREF,7);Serial.print(" - ");
-  //       Serial.print(pcap_results.PT1_over_PTREF,7);Serial.print(" - ");
-  //       Serial.println(pcap_results.PTInternal_over_PTREF,7);
-
-      
-  //     if (!started){
-  //       Serial.println(started);
-  //       started = true;
-  //       pcap1.send_command(CDC_START);
-  //     }else if (started){
-  //       Serial.println(started);
-
-  //       pcap1.reset_pcap_dsp();
-  //       pcap1.send_command(INITIALIZE);
-  //       started = false; 
-  //     }
-  //   }
-  // }else{
-  //   iloop = 0;
-  // }
-  // delay(100); iloop++;
-
-
-
-  if(!pcap_status.CDC_ACTIVE && pcap_status.RDC_READY){
-
-
-  }
-
-  // while(!pcap_status.CDC_ACTIVE && pcap_status.RDC_READY){
-  //   if (pcap_status.COMB_ERR){
-  //     Serial.print("-COMB_ERR");
-  //     if (pcap_status.ERR_OVERFL){
-  //       Serial.print("--ERR_OVERFL");
-  //     }
-  //     if (pcap_status.MUP_ERR){
-  //       Serial.print("--MUP_ERR");
-  //     }
-  //     if (pcap_status.RDC_ERR){
-  //       Serial.print("--RDC_ERR");
-  //     }
-  //     if(pcap_status.C_PORT_ERR0){
-  //       Serial.print("--C_PORT_ERR0");
-  //     }
-  //     if(pcap_status.C_PORT_ERR1){
-  //       Serial.print("--C_PORT_ERR1");
-  //     }
-  //     if(pcap_status.C_PORT_ERR2){
-  //       Serial.print("--C_PORT_ERR2");
-  //     }
-  //     if(pcap_status.C_PORT_ERR3){
-  //       Serial.print("--C_PORT_ERR3");
-  //     }
-  //     if(pcap_status.C_PORT_ERR4){
-  //       Serial.print("--C_PORT_ERR4");
-  //     }
-  //     if(pcap_status.C_PORT_ERR5){
-  //       Serial.print("--C_PORT_ERR5");
-  //     }
-  //     if(pcap_status.C_PORT_ERR_INT){
-  //       Serial.print("--C_PORT_ERR_INT");
-  //     }                          
-
-  //   }
-  //   if(pcap_status.POR_FLAG_CONFIG){
-  //     Serial.print("POR_FLAG_CONFIG");      
-  //   }
-  //   if (pcap_status.POR_CDC_DSP_COLL){
-  //     Serial.print("POR_CDC_DSP_COLL");      
-  //   }
-  //   if (pcap_status.POR_FLAG_WDOG){
-  //     Serial.print("POR_FLAG_WDOG");      
-  //   }
-  //   if (pcap_status.POR_FLAG_WDOG){
-  //     Serial.print("POR_FLAG_WDOG");      
-  //   }        
-  //   delay(100);
-  //   pcap_status = pcap1.get_status();
-  // }
-  // pcap_results = pcap1.get_results();
-  // if (pcap_status.CDC_ACTIVE == false){
-
-  // }
-
-/* 
-Serial.print("pcap_status.RUNBIT :"); Serial.println(pcap_status.RUNBIT);
-Serial.print("pcap_status.CDC_ACTIVE :"); Serial.println(pcap_status.CDC_ACTIVE);
-Serial.print("pcap_status.RDC_READY :"); Serial.println(pcap_status.RDC_READY);
-Serial.print("pcap_status.AUTOBOOT_BUSY :"); Serial.println(pcap_status.AUTOBOOT_BUSY);
-Serial.print("pcap_status.POR_CDC_DSP_COLL :"); Serial.println(pcap_status.POR_CDC_DSP_COLL);
-Serial.print("pcap_status.POR_FLAG_WDOG :"); Serial.println(pcap_status.POR_FLAG_WDOG);
-Serial.print("pcap_status.COMB_ERR :"); Serial.println(pcap_status.COMB_ERR);
-Serial.print("pcap_status.ERR_OVERFL :"); Serial.println(pcap_status.ERR_OVERFL);
-Serial.print("pcap_status.MUP_ERR :"); Serial.println(pcap_status.MUP_ERR);
-Serial.print("pcap_status.RDC_ERR :"); Serial.println(pcap_status.RDC_ERR);
-Serial.print("pcap_status.C_PORT_ERR0 :"); Serial.println(pcap_status.C_PORT_ERR0);
-Serial.print("pcap_status.C_PORT_ERR1 :"); Serial.println(pcap_status.C_PORT_ERR1);
-Serial.print("pcap_status.C_PORT_ERR2 :"); Serial.println(pcap_status.C_PORT_ERR2);
-Serial.print("pcap_status.C_PORT_ERR3 :"); Serial.println(pcap_status.C_PORT_ERR3);
-Serial.print("pcap_status.C_PORT_ERR4 :"); Serial.println(pcap_status.C_PORT_ERR4);
-Serial.print("pcap_status.C_PORT_ERR5 :"); Serial.println(pcap_status.C_PORT_ERR5);
-Serial.print("pcap_status.C_PORT_ERR_INT :"); Serial.println(pcap_status.C_PORT_ERR_INT);
-*/
+  // Serial.print(pcap_results.C0_over_CREF,7);Serial.print(" - ");
+  // Serial.print(pcap_results.C1_over_CREF,7);Serial.print(" - ");
+  // Serial.print(pcap_results.C2_over_CREF,7);Serial.print(" - ");
+  // Serial.print(pcap_results.C3_over_CREF,7);Serial.print(" - ");
+  // Serial.print(pcap_results.C4_over_CREF,7);Serial.print(" - ");
+  // Serial.print(pcap_results.C5_over_CREF,7);Serial.print(" - ");
+  // Serial.print(pcap_results.PT1_over_PTREF,7);Serial.print(" - ");
+  // Serial.println(pcap_results.PTInternal_over_PTREF,7);
 
   // RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
 }
