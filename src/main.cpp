@@ -267,31 +267,25 @@ void setup() {
   metsensor_pcap_config.C_COMP_EXT = 0x01;
   metsensor_pcap_config.C_FLOATING = 0x01;
   metsensor_pcap_config.C_REF_INT = 0x00;
-
   metsensor_pcap_config.C_COMP_INT = 0b1;
   metsensor_pcap_config.C_COMP_EXT = 0b1;
-
   metsensor_pcap_config.C_FAKE = 0x00;
   metsensor_pcap_config.C_AVRG = 0x40;
-  
   metsensor_pcap_config.CONV_TIME = 0x00;
   metsensor_pcap_config.PRECHARGE_TIME = 0x00;
   metsensor_pcap_config.FULLCHARGE_TIME =  0x02;  
   metsensor_pcap_config.DISCHARGE_TIME = 0x00;
-
-  metsensor_pcap_config.RDCHG_INT_SEL0 = 0x03;
-  metsensor_pcap_config.RDCHG_INT_SEL1 = 0x03;
-
-  metsensor_pcap_config.RCHG_SEL = 0x00;
-
   metsensor_pcap_config.C_PORT_EN = 0x3F;
-
   metsensor_pcap_config.R_TRIG_SEL = 0x05;
   metsensor_pcap_config.R_TRIG_PREDIV = 0x01;
   metsensor_pcap_config.R_AVRG = 0x02;
   metsensor_pcap_config.R_FAKE = 0x00;
-
+  metsensor_pcap_config.R_PORT_EN_IMES = 0b1;
+  metsensor_pcap_config.R_PORT_EN_IREF = 0b1;
   metsensor_pcap_config.R_PORT_EN = 0b10;
+  metsensor_pcap_config.RDCHG_INT_SEL0 = 0x03;
+  metsensor_pcap_config.RDCHG_INT_SEL1 = 0x03;
+  metsensor_pcap_config.RCHG_SEL = 0x00;
   
   pcap1.update_config(metsensor_pcap_config);
   Serial.println(); Serial.println("updated config"); Serial.println();
