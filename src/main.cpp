@@ -18,6 +18,10 @@
 #include "pcap04.h"
 #include "Adafruit_BMP3XX.h"
 #include "MPU.hpp"
+#include "mpu/math.hpp"
+#include "mpu/types.hpp"
+
+#include "Adafruit_SPIDevice.h"
 
 #include "config.h"
 #include "diagnostics.h"
@@ -65,6 +69,11 @@ rcl_node_t node;
 rcl_timer_t diagnostic_timer;
 rcl_timer_t sensor_timer;
 
+mpud::raw_axes_t accelRaw;   // x, y, z axes as int16
+mpud::raw_axes_t gyroRaw;    // x, y, z axes as int16
+mpud::float_axes_t accelG;   // accel axes in (g) gravity format
+mpud::float_axes_t gyroDPS;  // gyro axes in (DPS) º/s format
+
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if ((temp_rc != RCL_RET_OK)) {coms_error(LED_PIN);}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if ((temp_rc != RCL_RET_OK)) {coms_error(LED_PIN);}}
 
@@ -77,14 +86,14 @@ void init_hw_peripherals(){
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
 
-  pinMode(PCAP1_CS_PIN, OUTPUT);             // PCAP1 serial select pin
-  digitalWrite(PCAP1_CS_PIN, HIGH);          // PCAP1 serial de-select
+  pinMode(PCAP1_CS_PIN, OUTPUT);              // PCAP1 serial select pin
+  digitalWrite(PCAP1_CS_PIN, HIGH);           // PCAP1 serial de-select
 
-  pinMode(PCAP2_CS_PIN, OUTPUT);             // PCAP2 serial select pin
-  digitalWrite(PCAP2_CS_PIN, HIGH);          // PCAP2 serial de-select
+  pinMode(PCAP2_CS_PIN, OUTPUT);              // PCAP2 serial select pin
+  digitalWrite(PCAP2_CS_PIN, HIGH);           // PCAP2 serial de-select
   
-  pinMode(MPU_CS_PIN, OUTPUT);        // MPU6500 serial select pin
-  digitalWrite(MPU_CS_PIN, HIGH);     // MPU6500 serial de-select     
+  pinMode(MPU_CS_PIN, OUTPUT);                // MPU6500 serial select pin
+  digitalWrite(MPU_CS_PIN, HIGH);             // MPU6500 serial de-select     
   
   pinMode(HEATER1_SEL_PIN, OUTPUT);       
   digitalWrite(HEATER1_SEL_PIN, LOW);       
@@ -95,16 +104,20 @@ void init_hw_peripherals(){
   SPI.begin();
 
   if (!bmp390.begin_I2C(BMP390_I2C_ADDR)) {
-    Serial.println("Could not find a valid BMP390 sensor, check wiring!");
+    LOG_ERROR("Could not find a valid BMP390, check wiring!");
     coms_error(LED_PIN);
   }
   bmp390.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
   bmp390.setPressureOversampling(BMP3_OVERSAMPLING_4X);
   bmp390.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
   bmp390.setOutputDataRate(BMP3_ODR_50_HZ); 
-  
-  // mpu.testConnection();
-  // mpu.initialize();
+
+  while (uint8_t err = mpu.testConnection()){
+    LOG_ERROR("Could not find a valid MPU6500, check wiring!");
+    coms_error(LED_PIN);
+  }
+
+  mpu.initialize();
 
   delay(1000);
 
@@ -144,7 +157,6 @@ void led_service_callback(const void * request, void * response){
     led_keyval = update_diagnostic_KeyValue(led_keyval, "ON");
   } else {
     // FIXME: turn off led here
-
     //Send response
     const char *message = "OFF - recieved, but not used";
     int msg_length = strlen(message) + 1;
@@ -257,12 +269,12 @@ void setup() {
   
   pcap1.init_nvram();
 
-  Serial.println(); Serial.println("current config"); Serial.println();
+  PRINTLN("current config");
   pcap1.print_config();
 
   metsensor_pcap_config = pcap1.get_config();
 
-  metsensor_pcap_config.C_TRIG_SEL = 0x06;
+  metsensor_pcap_config.C_TRIG_SEL = 0x02;
   metsensor_pcap_config.C_DIFFERENTIAL = 0x00;
   metsensor_pcap_config.C_COMP_EXT = 0x01;
   metsensor_pcap_config.C_FLOATING = 0x01;
@@ -270,29 +282,37 @@ void setup() {
   metsensor_pcap_config.C_COMP_INT = 0b1;
   metsensor_pcap_config.C_COMP_EXT = 0b1;
   metsensor_pcap_config.C_FAKE = 0x00;
-  metsensor_pcap_config.C_AVRG = 0x40;
-  metsensor_pcap_config.CONV_TIME = 0x00;
-  metsensor_pcap_config.PRECHARGE_TIME = 0x00;
-  metsensor_pcap_config.FULLCHARGE_TIME =  0x02;  
-  metsensor_pcap_config.DISCHARGE_TIME = 0x00;
+  metsensor_pcap_config.C_AVRG = 0x04;
+  metsensor_pcap_config.CONV_TIME = 0x2710;
+  metsensor_pcap_config.PRECHARGE_TIME = 0x05;
+  metsensor_pcap_config.FULLCHARGE_TIME =  0x05;  
+  metsensor_pcap_config.DISCHARGE_TIME = 0x10;
   metsensor_pcap_config.C_PORT_EN = 0x3F;
   metsensor_pcap_config.R_TRIG_SEL = 0x05;
   metsensor_pcap_config.R_TRIG_PREDIV = 0x01;
-  metsensor_pcap_config.R_AVRG = 0x02;
+  metsensor_pcap_config.R_AVRG = 0x01;
   metsensor_pcap_config.R_FAKE = 0x00;
   metsensor_pcap_config.R_PORT_EN_IMES = 0b1;
   metsensor_pcap_config.R_PORT_EN_IREF = 0b1;
   metsensor_pcap_config.R_PORT_EN = 0b10;
-  metsensor_pcap_config.RDCHG_INT_SEL0 = 0x03;
-  metsensor_pcap_config.RDCHG_INT_SEL1 = 0x03;
+  metsensor_pcap_config.RDCHG_INT_EN = 0x01;
+  metsensor_pcap_config.RDCHG_INT_SEL0 = 0x01;
+  metsensor_pcap_config.RDCHG_INT_SEL1 = 0x01;
   metsensor_pcap_config.RCHG_SEL = 0x00;
   
   pcap1.update_config(metsensor_pcap_config);
-  Serial.println(); Serial.println("updated config"); Serial.println();
+
+  PRINTLN("updated config");
   pcap1.print_config();
   
   pcap1.init_slave();
 
+  delay(1);
+
+  // pcap1.send_command(CDC_START);
+
+  delay(1);
+  
   // allocator = rcl_get_default_allocator();
 
   // // create init_options
@@ -440,8 +460,19 @@ void setup() {
 
 void loop() {
   
-  pcap1.send_command(CDC_START);
-  delay(1);
+  mpu.acceleration(&accelRaw);  // fetch raw data from the registers
+  mpu.rotation(&gyroRaw);       // fetch raw data from the registers
+  // MPU.motion(&accelRaw, &gyroRaw);  // read both in one shot
+  // Convert
+  accelG = mpud::accelGravity(accelRaw, mpud::ACCEL_FS_4G);
+  gyroDPS = mpud::gyroDegPerSec(gyroRaw, mpud::GYRO_FS_500DPS);
+  
+  // Debug
+  MPU_LOGD("accelRaw: [", accelRaw.x, accelRaw.y, accelRaw.z, "] \t");
+  MPU_LOGD("accel: [", DebugLogPrecision::FOUR, accelG.x, DebugLogPrecision::FOUR, accelG.y, DebugLogPrecision::FOUR, accelG.z, "] (G) \t");
+  MPU_LOGD("gyro : [", DebugLogPrecision::FOUR, gyroDPS[0], DebugLogPrecision::FOUR, gyroDPS[1], DebugLogPrecision::FOUR, gyroDPS[2], "] (º/s)\n");
+
+/*   
   pcap_status = pcap1.get_status(false);
   while(pcap_status.CDC_ACTIVE || pcap_status.COMB_ERR){
     if (pcap_status.COMB_ERR){
@@ -492,7 +523,7 @@ void loop() {
     }        
     pcap_status = pcap1.get_status(false);
     // Serial.print(" * ");
-    delay(100);
+    delay(10);
   }
 
   pcap_status = pcap1.get_status(false); 
@@ -528,6 +559,7 @@ void loop() {
 
   serializeJson(results_json, Serial);
 
+ */
   // Serial.print(pcap_results.C0_over_CREF,7);Serial.print(" - ");
   // Serial.print(pcap_results.C1_over_CREF,7);Serial.print(" - ");
   // Serial.print(pcap_results.C2_over_CREF,7);Serial.print(" - ");
