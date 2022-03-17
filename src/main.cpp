@@ -219,6 +219,7 @@ void pcap04_configure_registers(PCAP04 &pcap, pcap_config_t * pcap_config){
   pcap_config->RDCHG_INT_SEL0 = 0x01;
   pcap_config->RDCHG_INT_SEL1 = 0x01;
   pcap_config->RCHG_SEL = 0x00;
+<<<<<<< HEAD
   
   pcap_config->PG5_INTN_EN = true;
 
@@ -227,6 +228,15 @@ void pcap04_configure_registers(PCAP04 &pcap, pcap_config_t * pcap_config){
   PRINTLN("updated config");
   pcap.print_config();
 
+=======
+  pcap_config->PG5_INTN_EN = true;
+
+  pcap.update_config(pcap_config);
+
+  PRINTLN("updated config");
+  pcap.print_config();
+
+>>>>>>> 350c08bc9136f50d4b4620f26f511ba6e411446f
 }
 
 void pcap1_cdc_complete_callback(){
