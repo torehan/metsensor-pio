@@ -21,8 +21,6 @@
 #include "mpu/math.hpp"
 #include "mpu/types.hpp"
 
-#include "Adafruit_SPIDevice.h"
-
 #include "config.h"
 #include "diagnostics.h"
 
@@ -79,49 +77,6 @@ mpud::float_axes_t gyroDPS;  // gyro axes in (DPS) º/s format
 
 static volatile uint32_t epoc_time_nanos;
 
-void init_hw_peripherals(){
-
-  delay(1000);
-
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);
-
-  pinMode(PCAP1_CS_PIN, OUTPUT);              // PCAP1 serial select pin
-  digitalWrite(PCAP1_CS_PIN, HIGH);           // PCAP1 serial de-select
-
-  pinMode(PCAP2_CS_PIN, OUTPUT);              // PCAP2 serial select pin
-  digitalWrite(PCAP2_CS_PIN, HIGH);           // PCAP2 serial de-select
-  
-  pinMode(MPU_CS_PIN, OUTPUT);                // MPU6500 serial select pin
-  digitalWrite(MPU_CS_PIN, HIGH);             // MPU6500 serial de-select     
-  
-  pinMode(HEATER1_SEL_PIN, OUTPUT);       
-  digitalWrite(HEATER1_SEL_PIN, LOW);       
-
-  pinMode(HEATER2_SEL_PIN, OUTPUT);       
-  digitalWrite(HEATER2_SEL_PIN, LOW);     
-
-  SPI.begin();
-
-  if (!bmp390.begin_I2C(BMP390_I2C_ADDR)) {
-    LOG_ERROR("Could not find a valid BMP390, check wiring!");
-    coms_error(LED_PIN);
-  }
-  bmp390.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
-  bmp390.setPressureOversampling(BMP3_OVERSAMPLING_4X);
-  bmp390.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
-  bmp390.setOutputDataRate(BMP3_ODR_50_HZ); 
-
-  while (uint8_t err = mpu.testConnection()){
-    LOG_ERROR("Could not find a valid MPU6500, check wiring!");
-    coms_error(LED_PIN);
-  }
-
-  mpu.initialize();
-
-  delay(1000);
-
-  };
 
 void publish_diagnostics() {
   // update key value array
@@ -231,7 +186,52 @@ void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
   }
 }
 
+void pcap04_configure_registers(PCAP04 &pcap, pcap_config_t * pcap_config){
 
+  PRINTLN("current config");
+  
+  pcap.print_config();
+
+  *pcap_config = pcap.get_config();
+
+  pcap_config->C_TRIG_SEL = 0x02;
+  pcap_config->C_DIFFERENTIAL = 0x00;
+  pcap_config->C_COMP_EXT = 0x01;
+  pcap_config->C_FLOATING = 0x01;
+  pcap_config->C_REF_INT = 0x00;
+  pcap_config->C_COMP_INT = 0b1;
+  pcap_config->C_COMP_EXT = 0b1;
+  pcap_config->C_FAKE = 0x00;
+  pcap_config->C_AVRG = 0x04;
+  pcap_config->CONV_TIME = 0x2710;
+  pcap_config->PRECHARGE_TIME = 0x05;
+  pcap_config->FULLCHARGE_TIME =  0x05;  
+  pcap_config->DISCHARGE_TIME = 0x10;
+  pcap_config->C_PORT_EN = 0x3F;
+  pcap_config->R_TRIG_SEL = 0x05;
+  pcap_config->R_TRIG_PREDIV = 0x01;
+  pcap_config->R_AVRG = 0x00;
+  pcap_config->R_FAKE = 0x00;
+  pcap_config->R_PORT_EN_IMES = 0b1;
+  pcap_config->R_PORT_EN_IREF = 0b1;
+  pcap_config->R_PORT_EN = 0b10;
+  pcap_config->RDCHG_INT_EN = 0x01;
+  pcap_config->RDCHG_INT_SEL0 = 0x01;
+  pcap_config->RDCHG_INT_SEL1 = 0x01;
+  pcap_config->RCHG_SEL = 0x00;
+  
+  pcap_config->PG5_INTN_EN = true;
+
+  pcap.update_config(pcap_config);
+
+  PRINTLN("updated config");
+  pcap.print_config();
+
+}
+
+void pcap1_cdc_complete_callback(){
+  pcap1.cdc_complete_flag = true;
+}
 
 /**
 * @brief Fills out the diagnostic message structure with the default values
@@ -262,56 +262,73 @@ void init_diagnostics() {
   dia_array->status = status_array;
 }
 
+void init_hw_peripherals(){
+
+  delay(1000);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
+
+  pinMode(PCAP1_CS_PIN, OUTPUT);              // PCAP1 serial select pin
+  digitalWrite(PCAP1_CS_PIN, HIGH);           // PCAP1 serial de-select
+
+  // pinMode(PCAP1_INTN_PG5, INPUT);             // PCAP1 data ready interept pin
+
+  pinMode(PCAP2_CS_PIN, OUTPUT);              // PCAP2 serial select pin
+  digitalWrite(PCAP2_CS_PIN, HIGH);           // PCAP2 serial de-select
+  
+  pinMode(PCAP2_INTN_PG5, INPUT);             // PCAP2 data ready interept pin
+
+  attachInterrupt(digitalPinToInterrupt(PCAP1_INTN_PG5),                // this is for binding callback to interrupts
+                           pcap1_cdc_complete_callback, FALLING); 
+
+  pinMode(MPU_CS_PIN, OUTPUT);                // MPU6500 serial select pin
+  digitalWrite(MPU_CS_PIN, HIGH);             // MPU6500 serial de-select     
+  
+  pinMode(HEATER1_SEL_PIN, OUTPUT);       
+  digitalWrite(HEATER1_SEL_PIN, LOW);       
+
+  pinMode(HEATER2_SEL_PIN, OUTPUT);       
+  digitalWrite(HEATER2_SEL_PIN, LOW);     
+
+  SPI.begin();
+
+  // if (!bmp390.begin_I2C(BMP390_I2C_ADDR)) {
+  //   LOG_ERROR("Could not find a valid BMP390, check wiring!");
+  //   coms_error(LED_PIN);
+  // }
+  // bmp390.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
+  // bmp390.setPressureOversampling(BMP3_OVERSAMPLING_4X);
+  // bmp390.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
+  // bmp390.setOutputDataRate(BMP3_ODR_50_HZ); 
+
+  // while (mpu.testConnection()){
+  //   LOG_ERROR("Could not find a valid MPU6500, check wiring!");
+  //   coms_error(LED_PIN);
+  // }
+  // mpu.initialize();
+
+  while (!pcap1.test_connection()){
+    LOG_ERROR("Could not find a valid PCAP04 #1, check wiring!");
+    coms_error(LED_PIN);
+  }
+
+  pcap1.init_nvram();
+
+  pcap04_configure_registers(pcap1, &metsensor_pcap_config);
+
+  pcap1.initialize();
+
+  delay(1000);
+
+  };
+
 void setup() {
   //set_microros_transports();
   
   init_hw_peripherals();
   
-  pcap1.init_nvram();
-
-  PRINTLN("current config");
-  pcap1.print_config();
-
-  metsensor_pcap_config = pcap1.get_config();
-
-  metsensor_pcap_config.C_TRIG_SEL = 0x02;
-  metsensor_pcap_config.C_DIFFERENTIAL = 0x00;
-  metsensor_pcap_config.C_COMP_EXT = 0x01;
-  metsensor_pcap_config.C_FLOATING = 0x01;
-  metsensor_pcap_config.C_REF_INT = 0x00;
-  metsensor_pcap_config.C_COMP_INT = 0b1;
-  metsensor_pcap_config.C_COMP_EXT = 0b1;
-  metsensor_pcap_config.C_FAKE = 0x00;
-  metsensor_pcap_config.C_AVRG = 0x04;
-  metsensor_pcap_config.CONV_TIME = 0x2710;
-  metsensor_pcap_config.PRECHARGE_TIME = 0x05;
-  metsensor_pcap_config.FULLCHARGE_TIME =  0x05;  
-  metsensor_pcap_config.DISCHARGE_TIME = 0x10;
-  metsensor_pcap_config.C_PORT_EN = 0x3F;
-  metsensor_pcap_config.R_TRIG_SEL = 0x05;
-  metsensor_pcap_config.R_TRIG_PREDIV = 0x01;
-  metsensor_pcap_config.R_AVRG = 0x01;
-  metsensor_pcap_config.R_FAKE = 0x00;
-  metsensor_pcap_config.R_PORT_EN_IMES = 0b1;
-  metsensor_pcap_config.R_PORT_EN_IREF = 0b1;
-  metsensor_pcap_config.R_PORT_EN = 0b10;
-  metsensor_pcap_config.RDCHG_INT_EN = 0x01;
-  metsensor_pcap_config.RDCHG_INT_SEL0 = 0x01;
-  metsensor_pcap_config.RDCHG_INT_SEL1 = 0x01;
-  metsensor_pcap_config.RCHG_SEL = 0x00;
-  
-  pcap1.update_config(metsensor_pcap_config);
-
-  PRINTLN("updated config");
-  pcap1.print_config();
-  
-  pcap1.init_slave();
-
-  delay(1);
-
   // pcap1.send_command(CDC_START);
-
-  delay(1);
   
   // allocator = rcl_get_default_allocator();
 
@@ -466,108 +483,56 @@ void loop() {
   // Convert
   accelG = mpud::accelGravity(accelRaw, mpud::ACCEL_FS_4G);
   gyroDPS = mpud::gyroDegPerSec(gyroRaw, mpud::GYRO_FS_500DPS);
-  
-  // Debug
-  MPU_LOGD("accelRaw: [", accelRaw.x, accelRaw.y, accelRaw.z, "] \t");
-  MPU_LOGD("accel: [", DebugLogPrecision::FOUR, accelG.x, DebugLogPrecision::FOUR, accelG.y, DebugLogPrecision::FOUR, accelG.z, "] (G) \t");
-  MPU_LOGD("gyro : [", DebugLogPrecision::FOUR, gyroDPS[0], DebugLogPrecision::FOUR, gyroDPS[1], DebugLogPrecision::FOUR, gyroDPS[2], "] (º/s)\n");
 
-/*   
-  pcap_status = pcap1.get_status(false);
-  while(pcap_status.CDC_ACTIVE || pcap_status.COMB_ERR){
-    if (pcap_status.COMB_ERR){
-      Serial.print("-COMB_ERR");
-      if (pcap_status.ERR_OVERFL){
-        Serial.print("--ERR_OVERFL");
-      }
-      if (pcap_status.MUP_ERR){
-        Serial.print("--MUP_ERR");
-      }
-      if (pcap_status.RDC_ERR){
-        Serial.print("--RDC_ERR");
-      }
-      if(pcap_status.C_PORT_ERR0){
-        Serial.print("--C_PORT_ERR0");
-      }
-      if(pcap_status.C_PORT_ERR1){
-        Serial.print("--C_PORT_ERR1");
-      }
-      if(pcap_status.C_PORT_ERR2){
-        Serial.print("--C_PORT_ERR2");
-      }
-      if(pcap_status.C_PORT_ERR3){
-        Serial.print("--C_PORT_ERR3");
-      }
-      if(pcap_status.C_PORT_ERR4){
-        Serial.print("--C_PORT_ERR4");
-      }
-      if(pcap_status.C_PORT_ERR5){
-        Serial.print("--C_PORT_ERR5");
-      }
-      if(pcap_status.C_PORT_ERR_INT){
-        Serial.print("--C_PORT_ERR_INT");
-      }                          
+  if (pcap1.cdc_complete_flag){
 
+    pcap1_status = pcap1.get_status(false);
+    
+    pcap1.cdc_complete_flag = false;
+
+    pcap1_results = pcap1.get_results();
+    
+    //pcap1.send_command(CDC_START);
+
+    current_micros = micros();
+
+    if (!pcap1_status->COMB_ERR){
+      results_json["results0_f"] = pcap1_results->C0_over_CREF;
+      results_json["results1_f"] = pcap1_results->C1_over_CREF;
+      results_json["results2_f"] = pcap1_results->C2_over_CREF;
+      results_json["results3_f"] = pcap1_results->C3_over_CREF;
+      results_json["results4_f"] = pcap1_results->C4_over_CREF;
+      results_json["results5_f"] = pcap1_results->C5_over_CREF;
+      results_json["results6_f"] = pcap1_results->PT1_over_PTREF;        
+      results_json["results7_f"] = pcap1_results->PTInternal_over_PTREF;
     }
-    if(pcap_status.POR_FLAG_CONFIG){
-      Serial.print("POR_FLAG_CONFIG");      
-    }
-    if (pcap_status.POR_CDC_DSP_COLL){
-      Serial.print("POR_CDC_DSP_COLL");      
-    }
-    if (pcap_status.POR_FLAG_WDOG){
-      Serial.print("POR_FLAG_WDOG");      
-    }
-    if (pcap_status.POR_FLAG_WDOG){
-      Serial.print("POR_FLAG_WDOG");      
-    }        
-    pcap_status = pcap1.get_status(false);
-    // Serial.print(" * ");
-    delay(10);
+    results_json["time"] = current_micros;
+    results_json["RUNBIT"] = pcap1_status->RUNBIT;
+    results_json["CDC_ACTIVE"] = pcap1_status->CDC_ACTIVE;
+    results_json["RDC_READY"] = pcap1_status->RDC_READY;
+    results_json["AUTOBOOT_BUSY"] = pcap1_status->AUTOBOOT_BUSY;
+    results_json["POR_CDC_DSP_COLL"] = pcap1_status->POR_CDC_DSP_COLL;
+    results_json["POR_FLAG_WDOG"] = pcap1_status->POR_FLAG_WDOG;
+    results_json["COMB_ERR"] = pcap1_status->COMB_ERR;
+    results_json["ERR_OVERFL"] = pcap1_status->ERR_OVERFL;
+    results_json["MUP_ERR"] = pcap1_status->MUP_ERR;
+    results_json["RDC_ERR"] = pcap1_status->RDC_ERR;
+    results_json["C_PORT_ERR0"] = pcap1_status->C_PORT_ERR0;
+    results_json["C_PORT_ERR1"] = pcap1_status->C_PORT_ERR1;
+    results_json["C_PORT_ERR2"] = pcap1_status->C_PORT_ERR2;
+    results_json["C_PORT_ERR3"] = pcap1_status->C_PORT_ERR3;
+    results_json["C_PORT_ERR4"] = pcap1_status->C_PORT_ERR4;
+    results_json["C_PORT_ERR5"] = pcap1_status->C_PORT_ERR5;
+    results_json["C_PORT_ERR_INT"] = pcap1_status->C_PORT_ERR_INT;
+
+    serializeJson(results_json, Serial);  Serial.println();
+    
+    results_json.clear();
   }
-
-  pcap_status = pcap1.get_status(false); 
-  pcap_results = pcap1.get_results();
-  current_micros = micros();
-
-  results_json["results0_f"] = pcap_results.C0_over_CREF;
-  results_json["results1_f"] = pcap_results.C1_over_CREF;
-  results_json["results2_f"] = pcap_results.C2_over_CREF;
-  results_json["results3_f"] = pcap_results.C3_over_CREF;
-  results_json["results4_f"] = pcap_results.C4_over_CREF;
-  results_json["results5_f"] = pcap_results.C5_over_CREF;
-  results_json["results6_f"] = pcap_results.PT1_over_PTREF;        
-  results_json["results7_f"] = pcap_results.PTInternal_over_PTREF;
-  results_json["time"] = current_micros;
-  results_json["RUNBIT"] = pcap_status.RUNBIT;
-  results_json["CDC_ACTIVE"] = pcap_status.CDC_ACTIVE;
-  results_json["RDC_READY"] = pcap_status.RDC_READY;
-  results_json["AUTOBOOT_BUSY"] = pcap_status.AUTOBOOT_BUSY;
-  results_json["POR_CDC_DSP_COLL"] = pcap_status.POR_CDC_DSP_COLL;
-  results_json["POR_FLAG_WDOG"] = pcap_status.POR_FLAG_WDOG;
-  results_json["COMB_ERR"] = pcap_status.COMB_ERR;
-  results_json["ERR_OVERFL"] = pcap_status.ERR_OVERFL;
-  results_json["MUP_ERR"] = pcap_status.MUP_ERR;
-  results_json["RDC_ERR"] = pcap_status.RDC_ERR;
-  results_json["C_PORT_ERR0"] = pcap_status.C_PORT_ERR0;
-  results_json["C_PORT_ERR1"] = pcap_status.C_PORT_ERR1;
-  results_json["C_PORT_ERR2"] = pcap_status.C_PORT_ERR2;
-  results_json["C_PORT_ERR3"] = pcap_status.C_PORT_ERR3;
-  results_json["C_PORT_ERR4"] = pcap_status.C_PORT_ERR4;
-  results_json["C_PORT_ERR5"] = pcap_status.C_PORT_ERR5;
-  results_json["C_PORT_ERR_INT"] = pcap_status.C_PORT_ERR_INT;
-
-  serializeJson(results_json, Serial);
-
- */
-  // Serial.print(pcap_results.C0_over_CREF,7);Serial.print(" - ");
-  // Serial.print(pcap_results.C1_over_CREF,7);Serial.print(" - ");
-  // Serial.print(pcap_results.C2_over_CREF,7);Serial.print(" - ");
-  // Serial.print(pcap_results.C3_over_CREF,7);Serial.print(" - ");
-  // Serial.print(pcap_results.C4_over_CREF,7);Serial.print(" - ");
-  // Serial.print(pcap_results.C5_over_CREF,7);Serial.print(" - ");
-  // Serial.print(pcap_results.PT1_over_PTREF,7);Serial.print(" - ");
-  // Serial.println(pcap_results.PTInternal_over_PTREF,7);
-
+  // Debug
+  // MPU_LOGD("accelRaw: [", accelRaw.x, accelRaw.y, accelRaw.z, "] \t");
+  // MPU_LOGD("accel: [", DebugLogPrecision::FOUR, accelG.x, DebugLogPrecision::FOUR, accelG.y, DebugLogPrecision::FOUR, accelG.z, "] (G) \t");
+  // MPU_LOGD("gyro : [", DebugLogPrecision::FOUR, gyroDPS[0], DebugLogPrecision::FOUR, gyroDPS[1], DebugLogPrecision::FOUR, gyroDPS[2], "] (º/s)\n");
+  
   // RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
 }
