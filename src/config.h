@@ -11,8 +11,12 @@
 
 #define MPU_CS_PIN 10
 #define MPU_INT_PIN 8
+
 #define PCAP1_CS_PIN 5
+#define PCAP1_INTN_PG5 16
+
 #define PCAP2_CS_PIN 6
+#define PCAP2_INTN_PG5 14
 
 #define HEATER1_PWM_PIN 2
 #define HEATER1_SEL_PIN 3
@@ -32,10 +36,10 @@ const char *metsensor_id = "999";  // ID - match to serial device name of teensy
 pcap_config_handler_t metsensor_pcap_config_handler;
 pcap_config_t metsensor_pcap_config;
 
-pcap_results_t pcap_results;
-pcap_status_t pcap_status;
+pcap_results_t* pcap1_results;
+pcap_status_t* pcap1_status;
 
-PCAP04 pcap1(PCAP04_V1, PCAP_SPI_MODE, STANDARD, PCAP2_CS_PIN, metsensor_pcap_config_handler, metsensor_pcap_config);
+PCAP04 pcap1(PCAP04_V1, PCAP_SPI_MODE, STANDARD, PCAP1_CS_PIN, metsensor_pcap_config);
 //PCAP04 pcap2(PCAP04_V0, PCAP_SPI_MODE, HUMIDITY, PCAP2_CS_PIN);
 
 MPU_t mpu(MPU_CS_PIN);
@@ -45,6 +49,5 @@ Adafruit_BMP3XX bmp390;
 DynamicJsonDocument results_json(1024);
 
 unsigned long current_micros = 0;
-
 
 #endif
